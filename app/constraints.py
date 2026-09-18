@@ -16,6 +16,7 @@ on the same hour take the max; multiple max_grid_window take the min;
 multiple solar_reduction take the most restrictive (lowest resulting
 effective solar), applied by successive narrowing exactly as here.
 """
+
 from __future__ import annotations
 
 import math
@@ -26,11 +27,11 @@ from app.schemas import BatteryConfig, HourEntry
 
 @dataclass(frozen=True)
 class HourBounds:
-    effective_solar: list[float]      # len 24
-    reserve: list[float]              # len 24, active minimum_energy_kwh per hour
-    grid_cap: list[float]             # len 24, math.inf where no cap applies
-    charge_limit: list[float]         # len 24
-    discharge_limit: list[float]      # len 24
+    effective_solar: list[float]  # len 24
+    reserve: list[float]  # len 24, active minimum_energy_kwh per hour
+    grid_cap: list[float]  # len 24, math.inf where no cap applies
+    charge_limit: list[float]  # len 24
+    discharge_limit: list[float]  # len 24
 
 
 def compile_bounds(
@@ -39,7 +40,8 @@ def compile_bounds(
     directives: list[dict],
 ) -> HourBounds:
     """`hours` must already be sorted by `.hour` (see ScenarioRequest.hours_by_index)."""
-    assert [h.hour for h in hours] == list(range(24)), "hours must be sorted 0..23"
+    if [h.hour for h in hours] != list(range(24)):
+        raise ValueError("hours must be sorted 0..23")
 
     effective_solar = [h.solar_kwh for h in hours]
     reserve = [battery.minimum_energy_kwh] * 24

@@ -17,9 +17,11 @@ never on the optimizer's in-memory dataclasses -- serialization itself can
 introduce the failures this is meant to catch (see errors.py for how
 main.py wires this in).
 """
+
 from __future__ import annotations
 
 import math
+from typing import Any, cast
 
 DEFAULT_TOL = 1e-6  # stricter than the judge's documented 0.01 -- see plan.
 
@@ -44,8 +46,9 @@ def replay(request: dict, directives: list[dict], response: dict, tol: float = D
     """
     _check(response.get("scenario_id") == request.get("scenario_id"), "scenario_id mismatch")
 
-    plan = response.get("hourly_plan")
-    _check(isinstance(plan, list) and len(plan) == 24, "hourly_plan must have 24 entries")
+    raw_plan = response.get("hourly_plan")
+    _check(isinstance(raw_plan, list) and len(raw_plan) == 24, "hourly_plan must have 24 entries")
+    plan = cast(list[dict[str, Any]], raw_plan)
     _check([p.get("hour") for p in plan] == list(range(24)), "hourly_plan hours must be 0..23 in order")
 
     source_by_hour = {h["hour"]: h for h in request["hours"]}
@@ -85,7 +88,7 @@ def replay(request: dict, directives: list[dict], response: dict, tol: float = D
         for key in ("grid_kwh", "solar_used_kwh", "battery_kwh", "battery_energy_after_kwh"):
             v = p.get(key)
             _check(isinstance(v, (int, float)) and not isinstance(v, bool), f"{key} not numeric")
-            _check(math.isfinite(v), f"{key} not finite")
+            _check(math.isfinite(cast(int | float, v)), f"{key} not finite")
         grid = float(p["grid_kwh"])
         solar_used = float(p["solar_used_kwh"])
         action = p.get("battery_action")
@@ -107,7 +110,9 @@ def replay(request: dict, directives: list[dict], response: dict, tol: float = D
 
         energy = energy + charge - discharge
         _check(abs(energy - p["battery_energy_after_kwh"]) <= tol, "battery_energy_after_kwh transition mismatch")
-        _check(reserve - tol <= energy <= battery["capacity_kwh"] + tol, "battery energy out of reserve/capacity bounds")
+        _check(
+            reserve - tol <= energy <= battery["capacity_kwh"] + tol, "battery energy out of reserve/capacity bounds"
+        )
 
         expected_balance = grid + solar_used + discharge - charge
         _check(abs(expected_balance - src["demand_kwh"]) <= tol, "energy balance violated")
@@ -124,5 +129,8 @@ def replay(request: dict, directives: list[dict], response: dict, tol: float = D
         ("peak_grid_kwh", peak_grid),
     ):
         v = response.get(key)
-        _check(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v), f"{key} not numeric/finite")
-        _check(abs(v - expected) <= tol, f"{key} does not match value recalculated from hourly_plan")
+        _check(
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v), f"{key} not numeric/finite"
+        )
+        numeric_value = cast(int | float, v)
+        _check(abs(numeric_value - expected) <= tol, f"{key} does not match value recalculated from hourly_plan")

@@ -5,6 +5,7 @@ stack trace, exception repr, or provider/internal detail. Callers that
 need the real reason for logs use `log_and_error`, which logs server-side
 at ERROR and returns a generic client-safe message.
 """
+
 from __future__ import annotations
 
 import logging

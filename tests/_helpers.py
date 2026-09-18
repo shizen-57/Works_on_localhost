@@ -4,6 +4,7 @@ design audit) into production-fixture form -- same feasibility construction
 (idle-battery witness), rewritten against app.schemas / app.constraints
 instead of duplicating bound-compilation ad hoc.
 """
+
 from __future__ import annotations
 
 import random
@@ -17,11 +18,20 @@ from app.schemas import BatteryConfig, HourEntry, ScenarioRequest
 
 def make_directive(directive_type: str, hours: list[int], note_index: int, **kwargs) -> dict:
     if directive_type == "no_op":
-        return dict(note_index=note_index, applies=False, directive_type="no_op",
-                    structured_adjustment=None, explanation="synthetic")
-    return dict(note_index=note_index, applies=True, directive_type=directive_type,
-                structured_adjustment=dict(hours=sorted(hours), **kwargs),
-                explanation="synthetic")
+        return dict(
+            note_index=note_index,
+            applies=False,
+            directive_type="no_op",
+            structured_adjustment=None,
+            explanation="synthetic",
+        )
+    return dict(
+        note_index=note_index,
+        applies=True,
+        directive_type=directive_type,
+        structured_adjustment=dict(hours=sorted(hours), **kwargs),
+        explanation="synthetic",
+    )
 
 
 def random_case(rng: random.Random, index: int) -> tuple[dict, list[dict]]:
@@ -36,7 +46,9 @@ def random_case(rng: random.Random, index: int) -> tuple[dict, list[dict]]:
         scenario_id=f"RANDOM-{index}",
         operator_notes=["synthetic"],
         battery=dict(
-            capacity_kwh=capacity, initial_energy_kwh=initial, minimum_energy_kwh=reserve,
+            capacity_kwh=capacity,
+            initial_energy_kwh=initial,
+            minimum_energy_kwh=reserve,
             max_charge_kwh_per_hour=0.0 if index % 13 == 0 else rng.uniform(0, 100),
             max_discharge_kwh_per_hour=0.0 if index % 11 == 0 else rng.uniform(0, 100),
         ),
@@ -56,10 +68,15 @@ def random_case(rng: random.Random, index: int) -> tuple[dict, list[dict]]:
     directives = []
     for n in range(n_notes):
         hs = sorted(rng.sample(range(24), rng.randint(1, 24)))
-        dtype = rng.choice([
-            "solar_reduction", "minimum_battery_reserve", "no_charge_window",
-            "no_discharge_window", "max_grid_window",
-        ])
+        dtype = rng.choice(
+            [
+                "solar_reduction",
+                "minimum_battery_reserve",
+                "no_charge_window",
+                "no_discharge_window",
+                "max_grid_window",
+            ]
+        )
         if dtype == "solar_reduction":
             directives.append(make_directive(dtype, hs, n, factor=rng.choice([0.0, 1.0, rng.random()])))
         elif dtype == "minimum_battery_reserve":
@@ -98,15 +115,21 @@ def oracle_cost(hours: list[HourEntry], battery: BatteryConfig, directives: list
         cap = bounds.grid_cap[h]
         obj[j] = hours[h].tariff_bdt_per_kwh
         lower[j + 4] = bounds.reserve[h]
-        upper[j:j + 6] = [
-            1e12 if math_isinf(cap) else cap, bounds.effective_solar[h],
-            bounds.charge_limit[h], bounds.discharge_limit[h], battery.capacity_kwh, 1,
+        upper[j : j + 6] = [
+            1e12 if math_isinf(cap) else cap,
+            bounds.effective_solar[h],
+            bounds.charge_limit[h],
+            bounds.discharge_limit[h],
+            battery.capacity_kwh,
+            1,
         ]
         integrality[j + 5] = 1
 
         row = np.zeros(n)
-        row[j:j + 4] = [1, 1, -1, 1]
-        rows.append(row); lows.append(hours[h].demand_kwh); highs.append(hours[h].demand_kwh)
+        row[j : j + 4] = [1, 1, -1, 1]
+        rows.append(row)
+        lows.append(hours[h].demand_kwh)
+        highs.append(hours[h].demand_kwh)
 
         row = np.zeros(n)
         row[j + 4] = 1
@@ -121,17 +144,23 @@ def oracle_cost(hours: list[HourEntry], battery: BatteryConfig, directives: list
         row = np.zeros(n)
         row[j + 2] = 1
         row[j + 5] = -bounds.charge_limit[h]
-        rows.append(row); lows.append(-np.inf); highs.append(0.0)
+        rows.append(row)
+        lows.append(-np.inf)
+        highs.append(0.0)
 
         row = np.zeros(n)
         row[j + 3] = 1
         row[j + 5] = bounds.discharge_limit[h]
-        rows.append(row); lows.append(-np.inf); highs.append(bounds.discharge_limit[h])
+        rows.append(row)
+        lows.append(-np.inf)
+        highs.append(bounds.discharge_limit[h])
 
     lower[-2] = upper[-2] = battery.initial_energy_kwh
 
     result = milp(
-        obj, integrality=integrality, bounds=Bounds(lower, upper),
+        obj,
+        integrality=integrality,
+        bounds=Bounds(lower, upper),
         constraints=LinearConstraint(np.array(rows), lows, highs),
         options={"time_limit": 10, "mip_rel_gap": 0},
     )

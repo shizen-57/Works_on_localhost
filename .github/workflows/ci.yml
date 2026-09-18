@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python-quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: ruff check app scripts tests
+      - run: ruff format --check app scripts tests
+      - run: mypy app
+      - run: bandit -q -r app
+      - run: pip-audit -r requirements.txt
+      - run: pytest --cov=app --cov-branch --cov-report=term-missing
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t gridwise-ci .
+      - name: Start non-production smoke container
+        run: |
+          docker run -d --name gridwise-ci \
+            -p 8000:8000 \
+            -e LLM_PROVIDER=placeholder \
+            -e ALLOW_STUB_INTERPRETER=true \
+            gridwise-ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs gridwise-ci
+          exit 1
+      - name: Verify non-root user and API runtime
+        run: |
+          test "$(docker exec gridwise-ci id -u)" != "0"
+          jq -c '.cases[0].input | .operator_notes=["The cafeteria menu changes tomorrow."]' \
+            data/public_sample_cases.json > /tmp/gridwise-smoke.json
+          curl --fail --silent \
+            -X POST http://127.0.0.1:8000/optimize-energy \
+            -H 'content-type: application/json' \
+            --data-binary @/tmp/gridwise-smoke.json \
+            | jq -e '.scenario_id == "SAMPLE-01" and (.hourly_plan | length == 24)'
+      - if: always()
+        run: docker rm -f gridwise-ci || true
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2

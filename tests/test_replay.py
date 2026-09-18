@@ -16,17 +16,24 @@ def good_response_and_request(public_cases):
     hours = req.hours_by_index()
     directives = case["expected_output"]["directive_interpretation"]
     from app.optimizer import solve
+
     bounds = compile_bounds(hours, req.battery, directives)
     result = solve(hours, req.battery, bounds)
     response = dict(
         scenario_id=req.scenario_id,
         hourly_plan=[
-            dict(hour=p.hour, grid_kwh=p.grid_kwh, solar_used_kwh=p.solar_used_kwh,
-                 battery_action=p.battery_action, battery_kwh=p.battery_kwh,
-                 battery_energy_after_kwh=p.battery_energy_after_kwh)
+            dict(
+                hour=p.hour,
+                grid_kwh=p.grid_kwh,
+                solar_used_kwh=p.solar_used_kwh,
+                battery_action=p.battery_action,
+                battery_kwh=p.battery_kwh,
+                battery_energy_after_kwh=p.battery_energy_after_kwh,
+            )
             for p in result.hourly_plan
         ],
-        total_grid_kwh=result.total_grid_kwh, total_cost_bdt=result.total_cost_bdt,
+        total_grid_kwh=result.total_grid_kwh,
+        total_cost_bdt=result.total_cost_bdt,
         peak_grid_kwh=result.peak_grid_kwh,
     )
     return case["input"], directives, response
@@ -37,10 +44,15 @@ def test_valid_response_passes(good_response_and_request):
     replay(request, directives, response)  # must not raise
 
 
-@pytest.mark.parametrize("field,value", [
-    ("grid_kwh", -1), ("solar_used_kwh", 1e6), ("battery_energy_after_kwh", 1e6),
-    ("battery_kwh", float("nan")),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("grid_kwh", -1),
+        ("solar_used_kwh", 1e6),
+        ("battery_energy_after_kwh", 1e6),
+        ("battery_kwh", float("nan")),
+    ],
+)
 def test_hourly_plan_field_mutations_rejected(good_response_and_request, field, value):
     request, directives, response = good_response_and_request
     bad = copy.deepcopy(response)

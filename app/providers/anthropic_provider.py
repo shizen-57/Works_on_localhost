@@ -23,6 +23,7 @@ shape and exception mapping follow the Anthropic Python SDK 1.6.0
 docs/skill reference exactly; before submission this must be run against
 real scenarios per the plan's "Real model (cannot be skipped)" test gate.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -33,6 +34,7 @@ from pydantic import BaseModel
 from app.llm_client import LLMClientError, LLMOutputError, LLMTransientError
 from app.llm_interpreter import SYSTEM_PROMPT, build_user_content
 from app.schemas import BatteryConfig
+
 
 # Loose on purpose: structured_adjustment's exact required keys differ by
 # directive_type (Problem Statement Sec. 04), so we accept any object here
@@ -78,9 +80,7 @@ class AnthropicLLMClient:
             )
 
         try:
-            response = await self._client.with_options(
-                timeout=self._timeout_s
-            ).messages.parse(
+            response = await self._client.with_options(timeout=self._timeout_s).messages.parse(
                 model=self._model,
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,

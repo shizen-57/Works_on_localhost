@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-09-18",
+  "timezone": "Asia/Dhaka",
+  "release_accepted": false,
+  "provider": {
+    "name": "sleepyai",
+    "base_url": "https://www.sleepyai.org/api/v1",
+    "transport": "POST /chat/completions",
+    "accessible_models": null,
+    "selected_model": null,
+    "comparison_report_date": null,
+    "credentials_recorded": false
+  },
+  "local": {
+    "python": "3.14.0",
+    "tests_passed": 165,
+    "tests_failed": 0,
+    "branch_coverage_percent": 92.57,
+    "ruff": "pass",
+    "mypy": "pass",
+    "bandit": "pass",
+    "dependency_audit": "pass_no_known_vulnerabilities",
+    "credential_pattern_scan": "pass",
+    "public_cases": {"passed": 10, "total": 10, "max_cost_gap_bdt": 0.0},
+    "generated_optimizer_scenarios": 2000,
+    "independent_milp_cross_checks": 100,
+    "semantic_single_cases": 72,
+    "semantic_bundles": 12,
+    "high_risk_cases": 24,
+    "optimizer_seed": 20260918,
+    "docker_daemon_available": false
+  },
+  "live": {
+    "base_url": "https://worksonlocalhost-production.up.railway.app/",
+    "health": "pass",
+    "public_cases": {"passed": 10, "total": 10, "max_cost_gap_bdt": 0.0},
+    "semantic_first_pass": {
+      "passed": 81,
+      "total": 84,
+      "p50_seconds": 2.148296395999978,
+      "p95_seconds": 2.469886624999617,
+      "max_seconds": 3.206125332999818,
+      "failed_ids": ["SEM-034", "SEM-051", "SEM-061"]
+    },
+    "focused_rerun": {"passed": 3, "total": 3, "p95_seconds": 4.23},
+    "semantic_nondeterminism_observed": true,
+    "final_220_request_soak": "deferred_until_model_selection_and_deploy"
+  },
+  "confirmed_fixes": [
+    "reject initial battery energy below base reserve",
+    "reject request bodies above 256 KiB",
+    "limit notes to 4000 characters and scenario IDs to 256 characters",
+    "reject duplicate keys and non-finite values in provider JSON",
+    "map documented provider errors and bound retries/deadlines",
+    "close asynchronous provider clients at shutdown"
+  ],
+  "blockers": [
+    "rotate exposed API key",
+    "run authenticated model discovery and comparison",
+    "pin exact winning model and deploy /api/v1 transport",
+    "pass complete live semantic and high-risk repeat gates",
+    "pass final 220-request live soak",
+    "verify and publish pullable Docker image",
+    "provide final repository visibility and video deliverables"
+  ]
+}

@@ -5,12 +5,17 @@ provider configured must refuse to become ready, not silently serve an
 all-no_op fallback. The offline audit measured that fallback violating a
 true directive in 9 of the 10 public sample cases.
 """
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 
-VALID_PROVIDERS = {"anthropic", "openai", "sleepyai", "placeholder"}
+# Keep this list limited to providers that build_llm_client actually wires up.
+# Advertising a provider here that fails later in the factory turns a clear
+# configuration mistake into a less useful startup error.
+VALID_PROVIDERS = {"anthropic", "sleepyai", "placeholder"}
+VALID_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
 
 
 class ConfigError(RuntimeError):
@@ -46,12 +51,13 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
 
     provider = e.get("LLM_PROVIDER", "").strip().lower()
     if provider not in VALID_PROVIDERS:
-        raise ConfigError(
-            f"LLM_PROVIDER must be one of {sorted(VALID_PROVIDERS)}, got {provider!r}"
-        )
+        raise ConfigError(f"LLM_PROVIDER must be one of {sorted(VALID_PROVIDERS)}, got {provider!r}")
 
     allow_stub = e.get("ALLOW_STUB_INTERPRETER", "false").strip().lower() in (
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
     if provider == "placeholder" and not allow_stub:
@@ -76,8 +82,8 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     if provider == "sleepyai" and not base_url:
         raise ConfigError(
             "LLM_BASE_URL is required when LLM_PROVIDER=sleepyai "
-            "(e.g. https://www.sleepyai.org/api -- the reseller's Anthropic-"
-            "compatible base URL, no trailing /v1/messages)."
+            "(use the documented OpenAI-compatible root "
+            "https://www.sleepyai.org/api/v1)."
         )
 
     try:
@@ -90,16 +96,15 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     try:
         deadline = float(e.get("REQUEST_DEADLINE_S", "25"))
     except ValueError as exc:
-        raise ConfigError(
-            f"REQUEST_DEADLINE_S must be a number, got {e.get('REQUEST_DEADLINE_S')!r}"
-        ) from exc
+        raise ConfigError(f"REQUEST_DEADLINE_S must be a number, got {e.get('REQUEST_DEADLINE_S')!r}") from exc
     if not (0 < deadline <= 30):
         raise ConfigError(
-            f"REQUEST_DEADLINE_S must be in (0, 30] to respect the judge's 30s "
-            f"per-request cutoff, got {deadline}"
+            f"REQUEST_DEADLINE_S must be in (0, 30] to respect the judge's 30s per-request cutoff, got {deadline}"
         )
 
     log_level = e.get("LOG_LEVEL", "INFO").strip().upper()
+    if log_level not in VALID_LOG_LEVELS:
+        raise ConfigError(f"LOG_LEVEL must be one of {sorted(VALID_LOG_LEVELS)}, got {log_level!r}")
 
     return Settings(
         llm_provider=provider,

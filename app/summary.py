@@ -8,9 +8,10 @@ template-based and separate from app.llm_interpreter removes any ambiguity
 about which call does the graded interpretation work, and avoids spending
 request-deadline budget on a second model call for cosmetic text.
 """
+
 from __future__ import annotations
 
-from app.optimizer import HourPlan, SolveResult
+from app.optimizer import SolveResult
 
 
 def build_summary(directives: list[dict], result: SolveResult) -> str:

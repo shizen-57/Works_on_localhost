@@ -19,6 +19,7 @@ See app/llm_interpreter.py for the bounded-retry policy this feeds into,
 and review/plan_review.md Sec. "unsafe repair can produce believable wrong
 success" for why this module is shaped this way.
 """
+
 from __future__ import annotations
 
 import math
@@ -107,10 +108,7 @@ def validate_directives(raw: object, note_count: int, battery_capacity: float) -
             raise GuardrailViolation(f"{dtype}: structured_adjustment has the wrong fields")
 
         hours = adjustment["hours"]
-        if (
-            not isinstance(hours, list) or not hours
-            or any(not _is_int(h) or not (0 <= h < 24) for h in hours)
-        ):
+        if not isinstance(hours, list) or not hours or any(not _is_int(h) or not (0 <= h < 24) for h in hours):
             raise GuardrailViolation(f"{dtype}: hours must be a non-empty list of integers 0..23")
         # Safe normalization only: sort + dedupe a set of already-valid hours.
         normalized_hours = sorted(set(hours))
@@ -127,13 +125,15 @@ def validate_directives(raw: object, note_count: int, battery_capacity: float) -
                 raise GuardrailViolation("minimum_battery_reserve: minimum_energy_kwh exceeds battery capacity")
             normalized_adjustment[value_key] = value
 
-        clean.append(dict(
-            note_index=idx,
-            applies=True,
-            directive_type=dtype,
-            structured_adjustment=normalized_adjustment,
-            explanation=explanation,
-        ))
+        clean.append(
+            dict(
+                note_index=idx,
+                applies=True,
+                directive_type=dtype,
+                structured_adjustment=normalized_adjustment,
+                explanation=explanation,
+            )
+        )
 
     if seen_indices != set(range(note_count)):
         raise GuardrailViolation("coverage: note_index values do not cover every operator note exactly once")

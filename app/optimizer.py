@@ -20,10 +20,12 @@ bound while strictly reducing both magnitudes -- so a continuous LP
 suffices and no binary solver is needed in production. This is proof, not
 a heuristic; revisit only if losses or cycling costs are ever introduced.
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from scipy.optimize import linprog
@@ -47,7 +49,7 @@ class HourPlan:
     hour: int
     grid_kwh: float
     solar_used_kwh: float
-    battery_action: str  # "charge" | "discharge" | "idle"
+    battery_action: Literal["charge", "discharge", "idle"]
     battery_kwh: float
     battery_energy_after_kwh: float
 
@@ -62,7 +64,8 @@ class SolveResult:
 
 def solve(hours: list[HourEntry], battery: BatteryConfig, bounds: HourBounds) -> SolveResult:
     """`hours` must be sorted by `.hour` 0..23 (see ScenarioRequest.hours_by_index)."""
-    assert [h.hour for h in hours] == list(range(24)), "hours must be sorted 0..23"
+    if [h.hour for h in hours] != list(range(24)):
+        raise ValueError("hours must be sorted 0..23")
 
     n_vars = 24 * 4  # per hour: [grid, solar_used, charge, discharge]
 
@@ -76,7 +79,7 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, bounds: HourBounds) ->
     for h in range(24):
         objective[idx(h, 0)] = tariff[h]
 
-    bounds_list: list[tuple[float, float]] = []
+    bounds_list: list[tuple[float, float | None]] = []
     for h in range(24):
         grid_ub = bounds.grid_cap[h]
         bounds_list.append((0.0, None if math.isinf(grid_ub) else grid_ub))
@@ -109,8 +112,8 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, bounds: HourBounds) ->
     a_ub = []
     b_ub = []
     for h in range(24):
-        upper = np.zeros(n_vars)   # sum_{k<=h}(charge-discharge) <= capacity - initial
-        lower = np.zeros(n_vars)   # sum_{k<=h}(discharge-charge) <= initial - reserve[h]
+        upper = np.zeros(n_vars)  # sum_{k<=h}(charge-discharge) <= capacity - initial
+        lower = np.zeros(n_vars)  # sum_{k<=h}(discharge-charge) <= initial - reserve[h]
         for k in range(h + 1):
             upper[idx(k, 2)] = 1.0
             upper[idx(k, 3)] = -1.0
@@ -123,16 +126,16 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, bounds: HourBounds) ->
 
     result = linprog(
         objective,
-        A_ub=np.array(a_ub), b_ub=np.array(b_ub),
-        A_eq=np.array(a_eq), b_eq=np.array(b_eq),
+        A_ub=np.array(a_ub),
+        b_ub=np.array(b_ub),
+        A_eq=np.array(a_eq),
+        b_eq=np.array(b_eq),
         bounds=bounds_list,
         method="highs",
     )
 
     if not result.success or not np.all(np.isfinite(result.x)):
-        raise InfeasibleScenario(
-            f"LP solve failed: status={result.status} message={result.message!r}"
-        )
+        raise InfeasibleScenario(f"LP solve failed: status={result.status} message={result.message!r}")
 
     raw = result.x.reshape(24, 4)  # columns: grid, solar_used, charge, discharge
 
@@ -149,6 +152,7 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, bounds: HourBounds) ->
         # on magnitude, and preserves the state trajectory exactly.
         net = charge - discharge
         state = state + net
+        action: Literal["charge", "discharge", "idle"]
         if net > 0:
             action, magnitude = "charge", net
         elif net < 0:
@@ -156,14 +160,16 @@ def solve(hours: list[HourEntry], battery: BatteryConfig, bounds: HourBounds) ->
         else:
             action, magnitude = "idle", 0.0
 
-        plan.append(HourPlan(
-            hour=h,
-            grid_kwh=grid,
-            solar_used_kwh=solar_used,
-            battery_action=action,
-            battery_kwh=magnitude,
-            battery_energy_after_kwh=state,
-        ))
+        plan.append(
+            HourPlan(
+                hour=h,
+                grid_kwh=grid,
+                solar_used_kwh=solar_used,
+                battery_action=action,
+                battery_kwh=magnitude,
+                battery_energy_after_kwh=state,
+            )
+        )
 
         # Totals recomputed from emitted grid values, never from the
         # solver's own objective value.

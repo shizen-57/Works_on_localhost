@@ -75,9 +75,10 @@ is returned, the same way the judge's own independent replay works.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `LLM_PROVIDER` | yes | `anthropic` \| `openai` \| `placeholder`. `placeholder` is dev-only (see below) and refuses to start unless `ALLOW_STUB_INTERPRETER=true` is also set. |
+| `LLM_PROVIDER` | yes | `anthropic` \| `sleepyai` \| `placeholder`. `placeholder` is dev-only (see below) and refuses to start unless `ALLOW_STUB_INTERPRETER=true` is also set. |
 | `LLM_MODEL` | if provider != placeholder | Model identifier for the chosen provider. |
 | `LLM_API_KEY` | if provider != placeholder | API key for the chosen provider. Read at runtime only -- never baked into the image or committed. |
+| `LLM_BASE_URL` | for `sleepyai` | OpenAI-compatible API root. Use `https://www.sleepyai.org/api/v1`; the adapter calls `/chat/completions`. |
 | `PORT` | no (default 8000) | Port the service binds to on `0.0.0.0`. |
 | `REQUEST_DEADLINE_S` | no (default 25) | Absolute per-request deadline; must be in (0, 30] to respect the judge's 30s cutoff. |
 | `ALLOW_STUB_INTERPRETER` | no (default false) | Dev escape hatch only. Must be `false`/unset for any real deployment. |
@@ -106,8 +107,13 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env: set LLM_PROVIDER=anthropic, LLM_MODEL=claude-opus-5, LLM_API_KEY=sk-...
-export $(grep -v '^#' .env | xargs)
+# Edit .env for Anthropic, or use these SleepyAI settings with your own
+# model identifier and key:
+# LLM_PROVIDER=sleepyai
+# LLM_MODEL=<model-id>
+# LLM_API_KEY=<secret>
+# LLM_BASE_URL=https://www.sleepyai.org/api/v1
+set -a; source .env; set +a
 
 uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
 ```
@@ -140,26 +146,47 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-83 tests: schema strictness, the full guardrail adversarial set (unsupported
-types, malformed hours/factors, positional-index attacks), the optimizer
-against all 10 public cases plus 300 seeded random feasible scenarios (40
-cross-checked against an independent MILP oracle), replay mutation-rejection
-probes, the full HTTP API (including a fixture-driven fake LLM client that
-returns organizer-correct answers, to exercise the complete contract without
-a live key), and deadline enforcement under a hanging provider call.
+The current suite has 165 tests. It covers strict schema/configuration and
+HTTP parsing, duplicate keys, non-finite values, request-size and text limits,
+both provider transports and error classes, adversarial guardrails, replay
+mutation rejection, deadlines/cancellation, health responsiveness under load,
+and Hypothesis-generated JSON/directive/optimizer inputs. The optimizer is
+also exercised on all 10 public cases, 2,000 deterministic random feasible
+scenarios, and 100 independent MILP cost cross-checks.
 
-### Real-model semantic evaluation (cannot be skipped before submission)
+The permanent CI gate runs Python 3.12 and 3.14, branch coverage >=90%, Ruff,
+Mypy, Bandit, dependency audit, secret scanning, and a clean Docker build/smoke
+test that verifies the process is non-root, reaches `/health`, and serves a
+safe no-op request. Credentialed provider and live-load tests remain manual so
+CI cannot spend model quota.
+
+### SleepyAI model discovery and selection (cannot be skipped before submission)
 
 ```bash
-LLM_PROVIDER=anthropic LLM_MODEL=claude-opus-5 LLM_API_KEY=sk-... \
-  python3 scripts/eval_interpreter.py --repeats 3
+read -s LLM_API_KEY && export LLM_API_KEY
+python3 scripts/discover_models.py --report eval_output/accessible-models.json
+python3 scripts/compare_models.py
 ```
 
-Runs the labeled cases in `tests/fixtures/semantic_cases.json` (a **starter
-set** -- see that file's `_meta.purpose`; expand toward the plan's >=60
-reviewed cases before treating a run of this as the final gate) directly
-against the configured `LLMClient`, 3x each to expose nondeterminism, and
-reports exact-note / per-field / per-directive-type accuracy and latency.
+Discovery performs authenticated, read-only `GET /models`. Comparison uses the
+same official OpenAI-compatible `/chat/completions` transport, retry budget,
+and production guardrails as the service. It evaluates the frozen 72 single
+notes plus 12 mixed-note bundles once, repeats the frozen 24-case high-risk set
+three times, and reports exact/per-field/per-type accuracy, call and retry
+rates, latency, tokens, and estimated cost. The timestamped JSON report selects
+only a model with 100% accuracy, zero failures, p95 <=5 seconds, and every call
+under 25 seconds; lowest known cost wins after those gates. Pin the exact winner
+as `LLM_MODEL` in Railway. Do not silently switch it during judging.
+
+To test the complete deployed pipeline without placing provider credentials on
+the test machine, run the same labeled notes through the public API. This also
+replays each returned schedule against fixture ground truth, not merely against
+the service's own reported interpretation:
+
+```bash
+python3 scripts/eval_live_semantics.py \
+  --base-url https://your-deployment.example.com --concurrency 2
+```
 
 ### Reliability soak (before submission, against the deployed URL)
 
@@ -168,12 +195,34 @@ python3 scripts/soak_api.py --base-url https://your-deployment.example.com \
   --count 100 --concurrency 1 4
 ```
 
+The default soak runs 100 requests at concurrency 1, another 100 at concurrency
+4, and a final 20-request concurrency-8 burst. It independently replays every
+response, probes `/health` throughout the load, and enforces zero failures,
+p95 <=5 seconds, every request under 30 seconds, and health <=1 second.
+
+### Latest live verification
+
+On 2026-09-18, the currently deployed Railway revision passed:
+
+- `/health` readiness;
+- all 10 public sample cases, with zero cost gap on every case;
+- a 40-request bounded soak (20 requests each at concurrency 1 and 4), with
+  zero failures/timeouts and worst measured p95 4.90s.
+
+The expanded 84-case corpus then scored 81/84 on its first pass (p50 2.15s,
+p95 2.47s). The three failed cases all passed on immediate rerun after one
+fixture-feasibility correction, exposing nondeterministic interpretation in
+two time-window cases. Therefore the current live model is **not yet accepted**.
+Run model comparison, deploy the selected exact model/base URL, then rerun the
+complete live corpus and default 220-request soak before submission.
+
 ## Docker
 
 ```bash
 docker build -t gridwise .
 docker run --rm -p 8000:8000 \
-  -e LLM_PROVIDER=anthropic -e LLM_MODEL=claude-opus-5 -e LLM_API_KEY=sk-... \
+  -e LLM_PROVIDER=sleepyai -e LLM_MODEL='<selected-exact-id>' \
+  -e LLM_API_KEY='<secret>' -e LLM_BASE_URL=https://www.sleepyai.org/api/v1 \
   gridwise
 
 curl http://localhost:8000/health
@@ -182,21 +231,20 @@ curl http://localhost:8000/health
 The image is multi-stage (`python:3.12-slim`), runs as a non-root user,
 binds `0.0.0.0:$PORT`, has a healthcheck against `/health`, and never bakes
 in secrets -- `LLM_API_KEY` etc. are read from the environment at container
-start only. **Note:** the container build/run was validated by running the
-exact application under the Dockerfile's shell-form CMD (`sh -c 'uvicorn ...
---port $PORT'`) and its healthcheck one-liner directly in the development
-environment -- both work correctly. A full `docker build` was not
-executable in the development sandbox (anonymous Docker Hub pulls were
-rate-limited there). **Run `docker build` and `docker run` once for real
-before submitting**, per the Participant Guide's Docker fallback
-requirement.
+start only. The exact application command and healthcheck have been exercised
+locally, but the Docker daemon is unavailable in this environment, so a full
+local `docker build`/`docker run` was not possible. GitHub Actions now performs
+that build/runtime smoke; a pullable registry image with an exact tag/digest
+still must be published and verified before submission.
 
 ## Model/provider and solver
 
-- Interpretation: configurable via `LLM_PROVIDER` (Anthropic Messages API
-  structured output via `client.messages.parse`, or a provider of your
-  choice by implementing `app.llm_client.LLMClient` -- see
-  `app/providers/anthropic_provider.py` for the reference implementation).
+- Interpretation: configurable via `LLM_PROVIDER`. The native Anthropic adapter
+  uses structured output via `client.messages.parse`; the SleepyAI adapter uses
+  the documented OpenAI-compatible `POST /chat/completions` endpoint with
+  Bearer authentication, non-streaming responses, a 2,048-token output cap,
+  and strict `choices[0].message.content` JSON extraction. Both feed the same
+  deterministic guardrails. See `app/providers/`.
 - Optimizer/solver: `scipy.optimize.linprog` with the `highs` method.
 - Web framework: FastAPI + uvicorn. Request/response validation: Pydantic v2
   in strict mode.
@@ -212,21 +260,21 @@ requirement.
   The prompt instructs the model to include only the portion of such a
   window that falls within hours 0-23 of the current scenario and to note
   the ambiguity in its explanation.
-- **`initial_energy_kwh < minimum_energy_kwh` is accepted at the schema
-  layer** (not auto-rejected) -- Problem Statement Sec. 9.2 only constrains
-  `E_after`, so hour 0 charging up into compliance is a legitimate feasible
-  scenario; the LP decides feasibility, not the schema.
+- **Battery initial-state consistency is validated early.** Because end-of-day
+  neutrality makes the final state equal `initial_energy_kwh`, the initial
+  value must already be between the base minimum and capacity; otherwise the
+  final hour can never satisfy both rules.
 - **Negative tariffs are accepted** -- the schema only requires the field
   to be a finite number, not non-negative.
-- The Anthropic provider adapter (`app/providers/anthropic_provider.py`) was
-  written against the documented SDK request/response shapes but has not
-  been exercised against a live key in this environment -- run
-  `scripts/eval_interpreter.py` against a real key before submitting.
+- Requests above 256 KiB, notes above 4,000 characters, and scenario IDs above
+  256 characters are rejected with controlled HTTP 400 responses.
+- The exact SleepyAI model ID remains a release blocker until authenticated
+  discovery/comparison is run and the winning ID is pinned in Railway.
 
 ## Dependencies and credits
 
 FastAPI, Pydantic, uvicorn, httpx (web framework/validation/HTTP), NumPy and
-SciPy/HiGHS (LP solver), the Anthropic Python SDK (`anthropic`) for the
-reference LLM provider adapter, and pytest/pytest-asyncio for the test
-suite. See `requirements.txt` / `requirements-dev.txt` for exact pinned
-versions.
+SciPy/HiGHS (LP solver), and the Anthropic Python SDK (`anthropic`) for the
+optional reference provider adapter. The development suite additionally uses
+pytest, pytest-asyncio, Hypothesis, pytest-cov, Ruff, Mypy, Bandit, and
+pip-audit. See `requirements.txt` / `requirements-dev.txt` for exact versions.

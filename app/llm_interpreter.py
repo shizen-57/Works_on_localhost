@@ -1,4 +1,4 @@
-"""Orchestrates operator-note interpretation: prompt + bounded correction retry.
+"""Orchestrates operator-note interpretation with a two-call total budget.
 
 This module owns the prompt/schema *content* and the retry policy; it does
 not know which provider executes the call (app.llm_client.LLMClient) or how
@@ -8,16 +8,17 @@ versioned place.
 
 Policy (Problem Statement Sec. 08, plan_review.md "unsafe repair"): raw LLM
 output is validated by app.guardrails, which fails closed on anything it
-can't safely normalize. On the first failure we give the model ONE bounded
-correction attempt with the rejection reason (never raw request data) fed
-back. If that also fails, we raise rather than fabricate a result -- this
-is the two-attempt total budget referenced in app/main.py's deadline
-accounting.
+can't safely normalize. On the first semantic validation failure we give the
+model ONE bounded correction attempt with the rejection reason (never raw
+request data) fed back. A transient provider failure also gets one retry. The
+two cases share the same two-call total budget; if it is exhausted, we raise
+rather than fabricate a result.
 """
+
 from __future__ import annotations
 
 from app.guardrails import GuardrailViolation, validate_directives
-from app.llm_client import LLMClient, LLMClientError
+from app.llm_client import LLMClient, LLMClientError, LLMTransientError
 from app.schemas import BatteryConfig
 
 PROMPT_VERSION = "gridwise-interpreter-v1"
@@ -121,18 +122,22 @@ class InterpretationFailed(RuntimeError):
     """
 
 
-async def interpret_notes(
-    client: LLMClient, notes: list[str], battery: BatteryConfig
-) -> list[dict]:
+async def interpret_notes(client: LLMClient, notes: list[str], battery: BatteryConfig) -> list[dict]:
     """Returns guardrail-validated, normalized directive dicts, sorted by
     note_index, covering every note exactly once. Never returns unvalidated
     data."""
     last_reason: str | None = None
     for attempt in range(2):  # one initial call + one bounded correction
         try:
-            raw = await client.interpret(
-                notes, battery, correction_feedback=last_reason
-            )
+            raw = await client.interpret(notes, battery, correction_feedback=last_reason)
+        except LLMTransientError as exc:
+            # The provider adapters intentionally disable their SDKs' hidden
+            # retries so the application owns the total attempt budget. Give
+            # one transient outage (timeout/rate-limit/5xx/connection reset)
+            # a second chance, while still making at most two model calls.
+            if attempt == 0:
+                continue
+            raise InterpretationFailed(f"llm_call_failed: {exc}") from exc
         except LLMClientError as exc:
             raise InterpretationFailed(f"llm_call_failed: {exc}") from exc
 
@@ -142,6 +147,4 @@ async def interpret_notes(
             last_reason = str(exc)
             continue
 
-    raise InterpretationFailed(
-        f"guardrail_rejected_after_correction: {last_reason}"
-    )
+    raise InterpretationFailed(f"guardrail_rejected_after_correction: {last_reason}")

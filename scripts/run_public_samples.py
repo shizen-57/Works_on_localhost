@@ -14,6 +14,7 @@ Usage:
     python scripts/run_public_samples.py --base-url http://localhost:8000
     python scripts/run_public_samples.py --base-url https://your-deployment.example.com
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,7 +40,9 @@ def _replay(request: dict, directives: list[dict], response: dict, tol: float) -
 
     check(response.get("scenario_id") == request.get("scenario_id"), "scenario_id mismatch")
     plan = response.get("hourly_plan") or []
-    check(len(plan) == 24 and [p.get("hour") for p in plan] == list(range(24)), "hourly_plan hours must be 0..23 in order")
+    check(
+        len(plan) == 24 and [p.get("hour") for p in plan] == list(range(24)), "hourly_plan hours must be 0..23 in order"
+    )
     if errors:
         return errors
 
@@ -104,7 +107,9 @@ def _check_interpretation(case: dict, got: list[dict]) -> list[str]:
     for idx, exp in expected.items():
         act = got_by_index[idx]
         if act.get("directive_type") != exp["directive_type"]:
-            errors.append(f"note {idx}: directive_type {act.get('directive_type')!r} != expected {exp['directive_type']!r}")
+            errors.append(
+                f"note {idx}: directive_type {act.get('directive_type')!r} != expected {exp['directive_type']!r}"
+            )
             continue
         if exp["directive_type"] == "no_op":
             continue

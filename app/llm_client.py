@@ -12,6 +12,7 @@ violating a true directive in 9 of the 10 public sample cases. See
 app/config.py -- production config refuses to start with this client
 selected unless ALLOW_STUB_INTERPRETER is explicitly set.
 """
+
 from __future__ import annotations
 
 from typing import Protocol

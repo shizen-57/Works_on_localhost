@@ -97,11 +97,39 @@ def test_negative_tariff_is_permitted(public_cases):
     ScenarioRequest.model_validate(req)  # must not raise
 
 
-def test_battery_starting_below_reserve_is_permitted():
-    """Documented divergence: initial_energy_kwh < minimum_energy_kwh is
-    not rejected at the schema layer -- Sec. 9.2 only constrains E_after,
-    and hour 0 could charge up into compliance. Let the LP decide."""
-    BatteryConfig(
-        capacity_kwh=100, initial_energy_kwh=10, minimum_energy_kwh=50,
-        max_charge_kwh_per_hour=50, max_discharge_kwh_per_hour=50,
-    )  # must not raise
+@pytest.mark.parametrize(
+    "initial,minimum,capacity",
+    [
+        (10, 50, 100),
+        (110, 50, 100),
+        (50, 110, 100),
+    ],
+)
+def test_impossible_battery_initial_state_is_rejected(initial, minimum, capacity):
+    with pytest.raises(ValidationError):
+        BatteryConfig(
+            capacity_kwh=capacity,
+            initial_energy_kwh=initial,
+            minimum_energy_kwh=minimum,
+            max_charge_kwh_per_hour=50,
+            max_discharge_kwh_per_hour=50,
+        )
+
+
+def test_unicode_note_and_scenario_id_are_supported(public_cases):
+    request = _valid_request(public_cases)
+    request["scenario_id"] = "ক্যাম্পাস-⚡"
+    request["operator_notes"] = ["দুপুর ১টা থেকে ৩টা পর্যন্ত সৌর উৎপাদন কমবে।"]
+    parsed = ScenarioRequest.model_validate(request)
+    assert parsed.scenario_id == "ক্যাম্পাস-⚡"
+
+
+def test_documented_string_limits(public_cases):
+    request = _valid_request(public_cases)
+    request["scenario_id"] = "s" * 256
+    request["operator_notes"] = ["n" * 4000]
+    ScenarioRequest.model_validate(request)
+
+    request["scenario_id"] += "s"
+    with pytest.raises(ValidationError):
+        ScenarioRequest.model_validate(request)

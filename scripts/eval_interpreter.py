@@ -3,9 +3,8 @@
 skipped"). Calls the CONFIGURED LLMClient directly -- not the HTTP API --
 so this isolates interpretation accuracy from the rest of the pipeline.
 
-Reads tests/fixtures/semantic_cases.json (a starter set -- see that file's
-_meta.purpose; expand toward >=60 reviewed cases before treating a run of
-this script as the final release gate) and reports exact-note accuracy,
+Reads the frozen 72-case single-note corpus in
+tests/fixtures/semantic_cases.json and reports exact-note accuracy,
 per-field accuracy, per-directive-type accuracy, latency percentiles, and
 failure/retry counts, repeating each case --repeats times to expose
 nondeterminism.
@@ -13,10 +12,11 @@ nondeterminism.
 This directly needs LLM_PROVIDER/LLM_MODEL/LLM_API_KEY set to a real
 provider (not placeholder) -- see .env.example.
 
-Usage:
-    LLM_PROVIDER=anthropic LLM_MODEL=claude-opus-5 LLM_API_KEY=sk-... \\
-        python scripts/eval_interpreter.py --repeats 3
+This is a focused provider diagnostic. For SleepyAI release selection, use
+scripts/compare_models.py, which also includes mixed-note bundles, production
+guardrails, the frozen high-risk repeat policy, token cost, and model ranking.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,8 +67,10 @@ async def main() -> int:
 
     settings = load_settings()
     if settings.using_stub_interpreter:
-        print("ERROR: LLM_PROVIDER=placeholder cannot be semantically evaluated "
-              "-- set a real provider (see .env.example) before running this script.")
+        print(
+            "ERROR: LLM_PROVIDER=placeholder cannot be semantically evaluated "
+            "-- set a real provider (see .env.example) before running this script."
+        )
         return 2
     client = build_llm_client(settings)
 
@@ -120,14 +122,14 @@ async def main() -> int:
 
     print("\n=== Summary ===")
     print(f"Total runs: {total_runs}  Failures (call/shape errors): {failures}")
-    print(f"Exact-note accuracy: {exact_correct}/{total_runs} ({100*exact_correct/max(1,total_runs):.1f}%)")
+    print(f"Exact-note accuracy: {exact_correct}/{total_runs} ({100 * exact_correct / max(1, total_runs):.1f}%)")
     for field, total in per_field_totals.items():
         correct = per_field_correct[field]
-        print(f"  {field}: {correct}/{total} ({100*correct/max(1,total):.1f}%)")
+        print(f"  {field}: {correct}/{total} ({100 * correct / max(1, total):.1f}%)")
     print("Per-directive-type exact accuracy:")
     for dtype, total in sorted(per_type_totals.items()):
         correct = per_type_correct.get(dtype, 0)
-        print(f"  {dtype}: {correct}/{total} ({100*correct/max(1,total):.1f}%)")
+        print(f"  {dtype}: {correct}/{total} ({100 * correct / max(1, total):.1f}%)")
 
     if latencies:
         latencies.sort()

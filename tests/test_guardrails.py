@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import math
 
 import pytest
 
@@ -53,11 +52,19 @@ def test_missing_and_extra_entries_rejected(public_cases):
         validate_directives(valid + valid[:1], 2, _capacity(public_cases))
 
 
-@pytest.mark.parametrize("field,value", [
-    ("note_index", 1), ("note_index", True), ("note_index", -1), ("note_index", "0"),
-    ("directive_type", "change_tariff"), ("applies", False), ("applies", "true"),
-    ("explanation", ""),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("note_index", 1),
+        ("note_index", True),
+        ("note_index", -1),
+        ("note_index", "0"),
+        ("directive_type", "change_tariff"),
+        ("applies", False),
+        ("applies", "true"),
+        ("explanation", ""),
+    ],
+)
 def test_field_level_violations_rejected(public_cases, field, value):
     valid = _valid(public_cases)
     bad = copy.deepcopy(valid)
@@ -110,17 +117,29 @@ def test_empty_adjustment_on_non_no_op_rejected(public_cases):
 
 def test_reserve_exceeding_capacity_rejected(public_cases):
     capacity = _capacity(public_cases)
-    bad = [dict(note_index=0, applies=True, directive_type="minimum_battery_reserve",
-                 structured_adjustment=dict(hours=[0], minimum_energy_kwh=capacity + 1),
-                 explanation="x")]
+    bad = [
+        dict(
+            note_index=0,
+            applies=True,
+            directive_type="minimum_battery_reserve",
+            structured_adjustment=dict(hours=[0], minimum_energy_kwh=capacity + 1),
+            explanation="x",
+        )
+    ]
     with pytest.raises(GuardrailViolation):
         validate_directives(bad, 1, capacity)
 
 
 def test_negative_grid_cap_rejected(public_cases):
-    bad = [dict(note_index=0, applies=True, directive_type="max_grid_window",
-                 structured_adjustment=dict(hours=[0], max_grid_kwh=-1),
-                 explanation="x")]
+    bad = [
+        dict(
+            note_index=0,
+            applies=True,
+            directive_type="max_grid_window",
+            structured_adjustment=dict(hours=[0], max_grid_kwh=-1),
+            explanation="x",
+        )
+    ]
     with pytest.raises(GuardrailViolation):
         validate_directives(bad, 1, _capacity(public_cases))
 
@@ -139,8 +158,15 @@ def test_unsupported_type_never_coerced_to_no_op(public_cases):
     """Regression guard for the corrected design (plan_review.md Sec. 2):
     an unsupported directive_type must be REJECTED outright, never
     silently turned into a no_op that would drop a real constraint."""
-    bad = [dict(note_index=0, applies=True, directive_type="change_tariff",
-                 structured_adjustment=dict(hours=[0]), explanation="x")]
+    bad = [
+        dict(
+            note_index=0,
+            applies=True,
+            directive_type="change_tariff",
+            structured_adjustment=dict(hours=[0]),
+            explanation="x",
+        )
+    ]
     with pytest.raises(GuardrailViolation):
         validate_directives(bad, 1, _capacity(public_cases))
 

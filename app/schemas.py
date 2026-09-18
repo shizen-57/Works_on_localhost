@@ -6,10 +6,11 @@ coerced. Response models describe what *we* construct after guardrails
 have already validated LLM output, so they are typed but not re-strict --
 correctness there is guardrails.py's job, not pydantic's.
 """
+
 from __future__ import annotations
 
 import math
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -33,6 +34,7 @@ def _finite(value: float, name: str) -> float:
 # Request (strict)
 # --------------------------------------------------------------------------
 
+
 class _StrictModel(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -47,7 +49,7 @@ class HourEntry(_StrictModel):
     # LP supports finite negatives. See plan's documented divergence.
 
     @model_validator(mode="after")
-    def _check_finite(self) -> "HourEntry":
+    def _check_finite(self) -> HourEntry:
         _finite(self.demand_kwh, "demand_kwh")
         _finite(self.solar_kwh, "solar_kwh")
         _finite(self.tariff_bdt_per_kwh, "tariff_bdt_per_kwh")
@@ -60,41 +62,41 @@ class BatteryConfig(_StrictModel):
     minimum_energy_kwh: float = Field(ge=0)
     max_charge_kwh_per_hour: float = Field(ge=0)
     max_discharge_kwh_per_hour: float = Field(ge=0)
-    # Deliberately NOT enforcing minimum_energy_kwh <= initial_energy_kwh <=
-    # capacity_kwh here. Problem Statement Sec. 9.2 only constrains
-    # E_after (minimum <= E_after <= capacity); a scenario that starts
-    # below reserve is not necessarily infeasible if hour 0 can charge up
-    # into compliance. Rejecting it at the schema layer would 400 a
-    # scenario the judge may consider valid -- let the LP decide
-    # feasibility instead.
 
     @model_validator(mode="after")
-    def _check_finite(self) -> "BatteryConfig":
+    def _check_finite(self) -> BatteryConfig:
         for name in (
-            "capacity_kwh", "initial_energy_kwh", "minimum_energy_kwh",
-            "max_charge_kwh_per_hour", "max_discharge_kwh_per_hour",
+            "capacity_kwh",
+            "initial_energy_kwh",
+            "minimum_energy_kwh",
+            "max_charge_kwh_per_hour",
+            "max_discharge_kwh_per_hour",
         ):
             _finite(getattr(self, name), name)
+        # End-of-day neutrality returns the final state to initial_energy_kwh,
+        # and the final state is subject to the same reserve/capacity bounds.
+        # An initial state outside these bounds is therefore always infeasible.
+        if self.minimum_energy_kwh > self.capacity_kwh:
+            raise ValueError("minimum_energy_kwh must not exceed capacity_kwh")
+        if not self.minimum_energy_kwh <= self.initial_energy_kwh <= self.capacity_kwh:
+            raise ValueError("initial_energy_kwh must be between minimum_energy_kwh and capacity_kwh")
         return self
 
 
 class ScenarioRequest(_StrictModel):
-    scenario_id: str = Field(min_length=1)
-    operator_notes: list[str] = Field(min_length=1, max_length=3)
+    scenario_id: str = Field(min_length=1, max_length=256)
+    operator_notes: list[Annotated[str, Field(min_length=1, max_length=4000)]] = Field(min_length=1, max_length=3)
     hours: list[HourEntry] = Field(min_length=24, max_length=24)
     battery: BatteryConfig
 
     @model_validator(mode="after")
-    def _check_notes_and_hours(self) -> "ScenarioRequest":
+    def _check_notes_and_hours(self) -> ScenarioRequest:
         for note in self.operator_notes:
             if not note.strip():
                 raise ValueError("operator_notes entries must be non-empty and non-whitespace")
         hour_values = [h.hour for h in self.hours]
         if sorted(hour_values) != list(range(24)):
-            raise ValueError(
-                "hours must contain exactly one entry for each hour 0..23, got "
-                f"{sorted(hour_values)}"
-            )
+            raise ValueError(f"hours must contain exactly one entry for each hour 0..23, got {sorted(hour_values)}")
         return self
 
     def hours_by_index(self) -> list[HourEntry]:
@@ -107,12 +109,17 @@ class ScenarioRequest(_StrictModel):
 # guardrails already checked the parts that came from the LLM)
 # --------------------------------------------------------------------------
 
+
 class DirectiveInterpretation(BaseModel):
     note_index: int
     applies: bool
     directive_type: Literal[
-        "solar_reduction", "minimum_battery_reserve", "no_charge_window",
-        "no_discharge_window", "max_grid_window", "no_op",
+        "solar_reduction",
+        "minimum_battery_reserve",
+        "no_charge_window",
+        "no_discharge_window",
+        "max_grid_window",
+        "no_op",
     ]
     structured_adjustment: dict[str, Any] | None
     explanation: str
