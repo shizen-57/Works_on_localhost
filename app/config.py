@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-VALID_PROVIDERS = {"anthropic", "openai", "placeholder"}
+VALID_PROVIDERS = {"anthropic", "openai", "sleepyai", "placeholder"}
 
 
 class ConfigError(RuntimeError):
@@ -22,6 +22,7 @@ class Settings:
     llm_provider: str
     llm_model: str
     llm_api_key: str | None
+    llm_base_url: str | None
     port: int
     log_level: str
     request_deadline_s: float
@@ -64,12 +65,20 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
 
     model = e.get("LLM_MODEL", "").strip()
     api_key = e.get("LLM_API_KEY", "").strip() or None
+    base_url = e.get("LLM_BASE_URL", "").strip() or None
 
     if provider != "placeholder":
         if not model:
             raise ConfigError(f"LLM_MODEL is required when LLM_PROVIDER={provider!r}")
         if not api_key:
             raise ConfigError(f"LLM_API_KEY is required when LLM_PROVIDER={provider!r}")
+
+    if provider == "sleepyai" and not base_url:
+        raise ConfigError(
+            "LLM_BASE_URL is required when LLM_PROVIDER=sleepyai "
+            "(e.g. https://www.sleepyai.org/api -- the reseller's Anthropic-"
+            "compatible base URL, no trailing /v1/messages)."
+        )
 
     try:
         port = int(e.get("PORT", "8000"))
@@ -96,6 +105,7 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         llm_provider=provider,
         llm_model=model,
         llm_api_key=api_key,
+        llm_base_url=base_url,
         port=port,
         log_level=log_level,
         request_deadline_s=deadline,

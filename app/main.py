@@ -43,9 +43,17 @@ def build_llm_client(settings: Settings) -> LLMClient:
             api_key=settings.llm_api_key,  # type: ignore[arg-type]  # config.py guarantees non-None here
             model=settings.llm_model,
         )
-    # config.py's VALID_PROVIDERS only lists anthropic/openai/placeholder; an
-    # "openai" adapter is not implemented in this submission -- fail loudly
-    # at startup rather than silently falling back to the stub.
+    if settings.llm_provider == "sleepyai":
+        from app.providers.sleepyai_provider import SleepyAILLMClient
+
+        return SleepyAILLMClient(
+            api_key=settings.llm_api_key,  # type: ignore[arg-type]
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,  # type: ignore[arg-type]  # config.py guarantees non-None here
+        )
+    # config.py's VALID_PROVIDERS also lists "openai"; a direct OpenAI
+    # adapter is not implemented in this submission -- fail loudly at
+    # startup rather than silently falling back to the stub.
     raise ConfigError(
         f"no LLMClient implementation is wired up for LLM_PROVIDER={settings.llm_provider!r}"
     )

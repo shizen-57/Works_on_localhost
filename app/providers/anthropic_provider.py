@@ -10,6 +10,13 @@ itself enforces schema-valid JSON -- app.guardrails then does the semantic
 validation (allowed enum values, hour ranges, applies semantics, etc.) that
 a JSON schema alone can't express.
 
+No `temperature` is passed: sampling parameters (temperature/top_p/top_k)
+have been removed from the Messages API request shape for current-generation
+models -- the installed SDK's `messages.create`/`.parse` no longer even
+accept the keyword (confirmed: passing it raises TypeError before any
+network call). Determinism instead comes from the structured-output schema
+plus app.guardrails' bounded-retry policy, not from temperature=0.
+
 UNTESTED AGAINST A LIVE KEY as of this commit -- no provider key was
 available during development (see plan's "Blocking open item"). The request
 shape and exception mapping follow the Anthropic Python SDK 1.6.0
@@ -76,7 +83,6 @@ class AnthropicLLMClient:
             ).messages.parse(
                 model=self._model,
                 max_tokens=4096,
-                temperature=0,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_content}],
                 output_format=_RawInterpretationOut,
