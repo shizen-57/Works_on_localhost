@@ -1,0 +1,112 @@
+{
+  "scope": "Offline design prototype; no production API, real LLM, Docker or network tested",
+  "python": "3.14.3",
+  "scipy": "1.18.0",
+  "numpy": "2.4.6",
+  "seed": 20260918,
+  "sample_sha256": "fa6abd71868e0faf429a87429d7d4a2b7bfd38c5551565637498d7fec68d5f32",
+  "public": [
+    {
+      "id": "SAMPLE-01",
+      "cost": 38365.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-02",
+      "cost": 42885.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-03",
+      "cost": 35480.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-04",
+      "cost": 40495.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-05",
+      "cost": 33950.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-06",
+      "cost": 34090.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-07",
+      "cost": 38550.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-08",
+      "cost": 37665.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-09",
+      "cost": 34873.0,
+      "gap": 0.0
+    },
+    {
+      "id": "SAMPLE-10",
+      "cost": 41620.0,
+      "gap": 0.0
+    }
+  ],
+  "random_feasible_cases": 300,
+  "independent_milp_comparisons": 50,
+  "malformed_directive_rejections": 31,
+  "nontrivial_simultaneous_flow_cases": 89,
+  "rejected_output_mutations": 11,
+  "infeasible_case_detected": true,
+  "noop_schedule_violations": [
+    {
+      "id": "SAMPLE-01",
+      "reason": "solar"
+    },
+    {
+      "id": "SAMPLE-02",
+      "reason": "rate/window"
+    },
+    {
+      "id": "SAMPLE-03",
+      "reason": "reserve/capacity"
+    },
+    {
+      "id": "SAMPLE-04",
+      "reason": "rate/window"
+    },
+    {
+      "id": "SAMPLE-06",
+      "reason": "solar"
+    },
+    {
+      "id": "SAMPLE-07",
+      "reason": "reserve/capacity"
+    },
+    {
+      "id": "SAMPLE-08",
+      "reason": "rate/window"
+    },
+    {
+      "id": "SAMPLE-09",
+      "reason": "solar"
+    },
+    {
+      "id": "SAMPLE-10",
+      "reason": "reserve/capacity"
+    }
+  ],
+  "noop_semantic_failures": 10,
+  "two_decimal_cost_error_witness_bdt": 3.528,
+  "lp_timing_ms": {
+    "first": 57.32220000027155,
+    "p95": 5.51991999989241,
+    "max": 57.32220000027155
+  },
+  "status": "PASS"
+}
